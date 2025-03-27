@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
@@ -6,6 +7,9 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from statsmodels.tsa.stattools import adfuller
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import seaborn as sns
+
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))  # Add src/ to sys.path
+
 from connector_class import SQLiteConnector
 
 # Define relative paths
