@@ -1,8 +1,9 @@
 import sqlite3
 
 class SQLiteConnector:
-    def __init__(self, db_name='C:\\WeatherDatabase\\weatherDatabase.db'):
-        self.db_name = db_name
+    def __init__(self, db_name='data/weatherDatabase.db'):
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        self.db_name = os.path.join(BASE_DIR, db_name)
 
     def connect(self):
         return sqlite3.connect(self.db_name)

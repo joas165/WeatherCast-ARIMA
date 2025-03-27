@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
@@ -7,8 +8,21 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 import seaborn as sns
 from connector_class import SQLiteConnector
 
-# Load and preprocess data
-df = pd.read_csv("C:/Users/joaspegr/WeatherProject/WeatherProject/data/GlobalLandTemperaturesByMajorCity.csv", parse_dates=['dt'], index_col='dt')
+# Define relative paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+CSV_PATH = os.path.join(DATA_DIR, "GlobalLandTemperaturesByMajorCity.csv")
+
+# Ensure data directory exists
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Check if CSV exists
+if not os.path.exists(CSV_PATH):
+    print(f"Data file not found: {CSV_PATH}. Please add the dataset.")
+    exit()
+
+# Load data
+df = pd.read_csv(CSV_PATH, parse_dates=['dt'], index_col='dt')
 
 # Show the last few rows of the data
 print("Tail of the data:")

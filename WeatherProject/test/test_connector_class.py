@@ -1,15 +1,13 @@
 import unittest
 import os
 import sqlite3
-import sys
 
-# Add the 'src' directory to the sys.path
-sys.path.append(r'C:\Users\jaspe\WeatherProject\WeatherProject')
+def __init__(self, db_name='data/weatherDatabase.db'):
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        self.db_name = os.path.join(BASE_DIR, db_name)
 
 # Now you can import the SQLiteConnector class
 from src.connector_class import SQLiteConnector
-
-
 
 class TestSQLiteConnector(unittest.TestCase):
 

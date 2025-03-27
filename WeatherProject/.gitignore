@@ -1,0 +1,25 @@
+# Ignore database files
+*.db
+*.sqlite3
+
+# Ignore Python cache files
+__pycache__/
+*.py[cod]
+
+# Ignore virtual environment
+venv/
+.env/
+
+# Ignore dataset files
+data/*.csv
+data/*.xlsx
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.bak
+
+
+# Ignore system files
+.DS_Store
+Thumbs.db
