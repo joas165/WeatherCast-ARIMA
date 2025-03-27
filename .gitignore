@@ -9,6 +9,8 @@ __pycache__/
 # Ignore virtual environment
 venv/
 .env/
+.envrc
+.python-version
 
 # Ignore dataset files
 data/*.csv
@@ -19,7 +21,13 @@ data/*.xlsx
 *.tmp
 *.bak
 
-
 # Ignore system files
 .DS_Store
 Thumbs.db
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore compiled C extensions
+*.so
+
