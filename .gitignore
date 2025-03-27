@@ -13,8 +13,8 @@ venv/
 .python-version
 
 # Ignore dataset files
-data/*.csv
-data/*.xlsx
+*.csv
+*.xlsx
 
 # Ignore logs and temporary files
 *.log
