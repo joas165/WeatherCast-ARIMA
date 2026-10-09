@@ -29,8 +29,15 @@ root-level `data/` directory. KaggleHub may require Kaggle authentication.
 The loader needs the columns `dt`, `City`, and
 `AverageTemperature`, including complete monthly London data from January 2000
 through December 2012. If the file is missing or the needed months are absent,
-the analysis will stop with an error. Review the [Berkeley Earth data terms](https://berkeleyearth.org/data/)
-before using the data.
+the analysis will stop with an error.
+
+Kaggle lists this dataset as **CC BY-NC-SA 4.0** on its
+[dataset page](https://www.kaggle.com/datasets/berkeleyearth/climate-change-earth-surface-temperature-data).
+The page says the data is repackaged from Berkeley Earth, whose
+[data terms](https://berkeleyearth.org/data/) state **CC BY-NC 4.0** for
+general non-commercial use. Check both sources and their current terms before
+redistributing or using the data; the Kaggle listing does not replace the
+upstream terms.
 
 ## Run
 
