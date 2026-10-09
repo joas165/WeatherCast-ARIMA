@@ -3,6 +3,7 @@ import pickle
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ sys.path.append(SRC_DIR)
 from weather_project import (
     calculate_metrics,
     forecast_series,
+    _fit_arima,
     load_monthly_series,
     rolling_origin_splits,
     seasonal_naive_forecast,
@@ -58,6 +60,20 @@ class TestWeatherForecastHelpers(unittest.TestCase):
 
         self.assertEqual(select_best_model(metrics), "seasonal_naive")
 
+    def test_arima_fit_uses_higher_iteration_limit_and_rejects_nonconvergence(self):
+        with patch("weather_project.ARIMA") as arima:
+            arima.return_value.fit.return_value.mle_retvals = {
+                "converged": False,
+                "iterations": 200,
+            }
+
+            with self.assertRaisesRegex(RuntimeError, "failed to converge after 200 iterations"):
+                _fit_arima(self.series)
+
+        arima.return_value.fit.assert_called_once_with(
+            method_kwargs={"maxiter": 200}
+        )
+
     def test_metrics_reject_misaligned_indexes(self):
         with self.assertRaisesRegex(ValueError, "indexes must match"):
             calculate_metrics(self.series, self.series.iloc[::-1])
@@ -100,6 +116,12 @@ class TestWeatherForecastHelpers(unittest.TestCase):
         self.assertTrue(monthly.index.is_monotonic_increasing)
         self.assertEqual(monthly.index.freqstr, "MS")
         np.testing.assert_array_equal(monthly.to_numpy(), np.arange(24, dtype=float))
+
+    def test_loader_explains_when_dataset_file_is_missing(self):
+        missing_path = os.path.join(tempfile.gettempdir(), "missing-temperatures.csv")
+
+        with self.assertRaisesRegex(FileNotFoundError, "root-level data/ directory"):
+            load_monthly_series(missing_path, "London", "2000-01-01", "2001-12-01")
 
     def test_loader_rejects_missing_months(self):
         index = self.index.delete(5)

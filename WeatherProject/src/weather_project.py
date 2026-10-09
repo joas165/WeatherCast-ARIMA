@@ -24,6 +24,7 @@ CITY = "London"
 START_DATE = "2000-01-01"
 END_DATE = "2012-12-01"
 ARIMA_ORDER = (7, 1, 3)
+ARIMA_MAXITER = 200
 SARIMA_ORDER = (1, 1, 1)
 SARIMA_SEASONAL_ORDER = (1, 1, 1, 12)
 EVALUATION_FOLDS = 5
@@ -33,6 +34,12 @@ MIN_TRAIN_MONTHS = 60
 
 def load_monthly_series(csv_path, city, start_date, end_date):
     """Load a complete, chronologically ordered monthly temperature series."""
+    if not os.path.isfile(csv_path):
+        raise FileNotFoundError(
+            f"Dataset not found: {csv_path}. Download "
+            "'GlobalLandTemperaturesByMajorCity.csv' and place it in the "
+            "repository's root-level data/ directory; see Readme.md."
+        )
     df = pd.read_csv(csv_path, parse_dates=["dt"], index_col="dt")
     required_columns = {"City", "AverageTemperature"}
     missing_columns = required_columns.difference(df.columns)
@@ -107,6 +114,19 @@ def select_best_model(average_metrics):
     )
 
 
+def _fit_arima(train):
+    fit = ARIMA(train, order=ARIMA_ORDER).fit(
+        method_kwargs={"maxiter": ARIMA_MAXITER}
+    )
+    if not fit.mle_retvals.get("converged", False):
+        iterations = fit.mle_retvals.get("iterations", "unknown")
+        raise RuntimeError(
+            f"ARIMA{ARIMA_ORDER} failed to converge after {iterations} iterations "
+            f"(maximum {ARIMA_MAXITER})."
+        )
+    return fit
+
+
 def rolling_origin_splits(
     series,
     n_splits=EVALUATION_FOLDS,
@@ -142,7 +162,7 @@ def evaluate_rolling_origin(series):
     last_fold = None
 
     for train, test in folds:
-        arima_fit = ARIMA(train, order=ARIMA_ORDER).fit()
+        arima_fit = _fit_arima(train)
         sarima_fit = SARIMAX(
             train,
             order=SARIMA_ORDER,
@@ -295,7 +315,7 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
         )
 
     if selected_model == "arima":
-        model_fit = ARIMA(monthly, order=ARIMA_ORDER).fit()
+        model_fit = _fit_arima(monthly)
         model_summary = model_fit.summary().as_text()
     elif selected_model == "sarima":
         model_fit = SARIMAX(

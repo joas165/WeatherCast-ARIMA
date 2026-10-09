@@ -13,9 +13,24 @@ cd WeatherCast-ARIMA
 pip install -r requirements.txt
 ```
 
-Download `GlobalLandTemperaturesByMajorCity.csv` from
-[Berkeley Earth](http://berkeleyearth.org/data/) and put it in the repository's
-root-level `data/` directory. Refer to the dataset's licensing terms before use.
+## Dataset
+
+The dataset is not included in the repository. From the repository root, install
+KaggleHub and use it to download the latest version of the **Climate Change:
+Earth Surface Temperature Data** dataset from Kaggle:
+
+```powershell
+python -m pip install kagglehub
+python -c "from pathlib import Path; import shutil, kagglehub; source = Path(kagglehub.dataset_download('berkeleyearth/climate-change-earth-surface-temperature-data')) / 'GlobalLandTemperaturesByMajorCity.csv'; destination = Path('data') / source.name; destination.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(source, destination); print('Dataset saved to:', destination.resolve())"
+```
+
+This saves `GlobalLandTemperaturesByMajorCity.csv` under the repository's
+root-level `data/` directory. KaggleHub may require Kaggle authentication.
+The loader needs the columns `dt`, `City`, and
+`AverageTemperature`, including complete monthly London data from January 2000
+through December 2012. If the file is missing or the needed months are absent,
+the analysis will stop with an error. Review the [Berkeley Earth data terms](https://berkeleyearth.org/data/)
+before using the data.
 
 ## Run
 
