@@ -62,7 +62,12 @@ class SQLiteConnector:
                 data_hash TEXT,
                 evaluation_folds INTEGER,
                 forecast_horizon_months INTEGER,
-                selected_model TEXT
+                selected_model TEXT,
+                holdout_mse REAL,
+                holdout_mae REAL,
+                holdout_start TEXT,
+                holdout_end TEXT,
+                holdout_horizon_months INTEGER
             )
             """)
                 existing_columns = {
@@ -89,6 +94,11 @@ class SQLiteConnector:
                     "evaluation_folds": "INTEGER",
                     "forecast_horizon_months": "INTEGER",
                     "selected_model": "TEXT",
+                    "holdout_mse": "REAL",
+                    "holdout_mae": "REAL",
+                    "holdout_start": "TEXT",
+                    "holdout_end": "TEXT",
+                    "holdout_horizon_months": "INTEGER",
                 }
                 for column, column_type in additions.items():
                     if column not in existing_columns:
@@ -136,6 +146,11 @@ class SQLiteConnector:
         evaluation_folds=None,
         forecast_horizon_months=None,
         selected_model=None,
+        holdout_mse=None,
+        holdout_mae=None,
+        holdout_start=None,
+        holdout_end=None,
+        holdout_horizon_months=None,
     ):
         """Insert model results into the arima_model table."""
         conn = self.connect()
@@ -151,10 +166,13 @@ class SQLiteConnector:
                 sarima_order_p, sarima_order_d, sarima_order_q,
                 sarima_seasonal_p, sarima_seasonal_d, sarima_seasonal_q,
                 sarima_seasonal_period, model_path, code_version, data_hash,
-                evaluation_folds, forecast_horizon_months, selected_model
+                evaluation_folds, forecast_horizon_months, selected_model,
+                holdout_mse, holdout_mae, holdout_start, holdout_end,
+                holdout_horizon_months
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?
             )
             """, (
                     adf_stat,
@@ -193,6 +211,11 @@ class SQLiteConnector:
                     evaluation_folds,
                     forecast_horizon_months,
                     selected_model,
+                    holdout_mse,
+                    holdout_mae,
+                    holdout_start,
+                    holdout_end,
+                    holdout_horizon_months,
                 ))
         finally:
             conn.close()

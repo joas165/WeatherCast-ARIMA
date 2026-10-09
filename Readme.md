@@ -42,13 +42,17 @@ python WeatherProject/src/weather_project.py
 
 The analysis uses London data from January 2000 through December 2012. It
 requires a complete monthly series in that period and stops with an error if
-months are missing. Evaluation uses five expanding-window rolling-origin
-splits. Each split forecasts 12 months, and the training window expands by
-12 months between splits; at least 120 monthly observations are required.
-Mean MSE and MAE across the five splits are reported for ARIMA, a seasonal-naive
-forecast (the previous year's monthly values), and a SARIMA model with a
-12-month seasonal period. The candidate with the lowest mean MSE is selected
-(mean MAE breaks ties) and refit on the full available series before saving.
+months are missing. The final 12 months (January–December 2012) are held out
+from model selection. Selection uses five expanding-window rolling-origin
+splits over the earlier data. Each split forecasts 12 months, and the training
+window expands by 12 months between splits; at least 120 months are required
+for the selection period. Mean MSE and MAE across those splits are reported
+for ARIMA, a seasonal-naive forecast (the previous year's monthly values), and
+a SARIMA model with a 12-month seasonal period. The candidate with the lowest
+mean MSE is selected (mean MAE breaks ties), then evaluated once on the
+untouched 2012 holdout. Holdout metrics are reported separately and do not
+affect model selection. After evaluation, the selected model is refit on the
+full available series before saving for future use.
 ARIMA and SARIMA results are saved in statsmodels format; a seasonal-naive
 result is saved as a pickle containing its seasonal period and latest values.
 
@@ -56,7 +60,9 @@ The SQLite database is created at `data/weatherDatabase.db`. Fitted ARIMA
 models are saved under `models/`. Each database result records the selected
 model type, its metrics and settings, the saved model path, and SHA-256 hashes
 of the script and source dataset so an experiment's inputs can be identified. The recorded
-training dates refer to the first split; test dates span all evaluation splits.
+training dates refer to the first selection split; test dates span the
+selection folds. The holdout columns separately record the selected model's
+holdout MSE/MAE and the holdout date range.
 The `arima_order_p/d/q` columns always describe the ARIMA candidate; legacy
 `order_p/d/q` columns are retained for compatibility and contain the same values.
 

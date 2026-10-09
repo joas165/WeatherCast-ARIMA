@@ -20,6 +20,8 @@ from weather_project import (
     rolling_origin_splits,
     seasonal_naive_forecast,
     SeasonalNaiveModel,
+    split_final_holdout,
+    evaluate_holdout,
     select_best_model,
 )
 
@@ -100,6 +102,43 @@ class TestWeatherForecastHelpers(unittest.TestCase):
     def test_rolling_origin_splits_reject_insufficient_history(self):
         with self.assertRaisesRegex(ValueError, "requires at least 120"):
             rolling_origin_splits(self.series)
+
+    def test_final_holdout_uses_last_year_after_selection_period(self):
+        series = pd.Series(
+            np.arange(156, dtype=float),
+            index=pd.date_range("2000-01-01", periods=156, freq="MS"),
+        )
+
+        selection, holdout = split_final_holdout(series)
+
+        self.assertEqual(len(selection), 144)
+        self.assertEqual(len(holdout), 12)
+        self.assertEqual(selection.index[-1], pd.Timestamp("2011-12-01"))
+        self.assertEqual(holdout.index[0], pd.Timestamp("2012-01-01"))
+        self.assertEqual(holdout.index[-1], series.index[-1])
+        folds = rolling_origin_splits(selection)
+        self.assertEqual([len(train) for train, _ in folds], [84, 96, 108, 120, 132])
+        self.assertEqual(folds[0][1].index[0], pd.Timestamp("2007-01-01"))
+        self.assertEqual(folds[-1][1].index[-1], pd.Timestamp("2011-12-01"))
+
+    def test_holdout_evaluation_forecasts_from_selection_data_only(self):
+        train = pd.Series(
+            np.arange(12, dtype=float),
+            index=pd.date_range("2000-01-01", periods=12, freq="MS"),
+        )
+        test = pd.Series(
+            np.arange(12, 24, dtype=float),
+            index=pd.date_range("2001-01-01", periods=12, freq="MS"),
+        )
+
+        (mse, mae), forecast, fitted_model, intervals = evaluate_holdout(
+            train, test, "seasonal_naive"
+        )
+
+        np.testing.assert_array_equal(forecast.to_numpy(), train.to_numpy())
+        self.assertEqual((mse, mae), (144.0, 12.0))
+        self.assertIsNone(fitted_model)
+        self.assertIsNone(intervals)
 
     def test_loader_sorts_and_returns_month_start_frequency(self):
         frame = pd.DataFrame({

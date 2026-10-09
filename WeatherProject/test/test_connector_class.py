@@ -54,7 +54,10 @@ class TestSQLiteConnector(unittest.TestCase):
             seasonal_naive_mse=0.2, seasonal_naive_mae=0.1, sarima_mse=0.15, sarima_mae=0.08,
             sarima_order=(1, 1, 1), sarima_seasonal_order=(1, 1, 1, 12),
             model_path='models/test.pkl', code_version='code-hash', data_hash='data-hash',
-            evaluation_folds=5, forecast_horizon_months=12, selected_model='sarima'
+            evaluation_folds=5, forecast_horizon_months=12, selected_model='sarima',
+            holdout_mse=0.3, holdout_mae=0.4,
+            holdout_start='2012-01', holdout_end='2012-12',
+            holdout_horizon_months=12
         )
 
         conn = self.connector.connect()
@@ -95,6 +98,12 @@ class TestSQLiteConnector(unittest.TestCase):
         self.assertEqual(rows[0][36], 'sarima')  # selected_model
         self.assertIn('arima_order_p', column_names)
         self.assertIn('data_hash', column_names)
+        result_by_name = dict(zip(column_names, rows[0]))
+        self.assertEqual(result_by_name['holdout_mse'], 0.3)
+        self.assertEqual(result_by_name['holdout_mae'], 0.4)
+        self.assertEqual(result_by_name['holdout_start'], '2012-01')
+        self.assertEqual(result_by_name['holdout_end'], '2012-12')
+        self.assertEqual(result_by_name['holdout_horizon_months'], 12)
 
         conn.close()
 
@@ -124,6 +133,8 @@ class TestSQLiteConnector(unittest.TestCase):
         self.assertIn("sarima_mse", columns)
         self.assertIn("evaluation_folds", columns)
         self.assertIn("selected_model", columns)
+        self.assertIn("holdout_mse", columns)
+        self.assertIn("holdout_horizon_months", columns)
         self.assertEqual(migrated_order, (5, 1, 3))
 
     def test_insert_errors_are_raised(self):

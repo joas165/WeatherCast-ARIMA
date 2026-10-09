@@ -29,6 +29,7 @@ SARIMA_ORDER = (1, 1, 1)
 SARIMA_SEASONAL_ORDER = (1, 1, 1, 12)
 EVALUATION_FOLDS = 5
 FORECAST_HORIZON_MONTHS = 12
+HOLDOUT_HORIZON_MONTHS = 12
 MIN_TRAIN_MONTHS = 60
 
 
@@ -127,6 +128,44 @@ def _fit_arima(train):
     return fit
 
 
+def _fit_sarima(train):
+    return SARIMAX(
+        train,
+        order=SARIMA_ORDER,
+        seasonal_order=SARIMA_SEASONAL_ORDER,
+        enforce_stationarity=False,
+        enforce_invertibility=False,
+    ).fit(disp=False)
+
+
+def split_final_holdout(series, horizon=HOLDOUT_HORIZON_MONTHS):
+    if horizon < 1 or len(series) <= horizon:
+        raise ValueError("The series must contain more observations than the holdout horizon.")
+    return series.iloc[:-horizon], series.iloc[-horizon:]
+
+
+def evaluate_holdout(train, test, model_name):
+    confidence_intervals = None
+    if model_name == "arima":
+        model_fit = _fit_arima(train)
+        forecast_result = model_fit.get_forecast(steps=len(test))
+        confidence_intervals = forecast_result.conf_int()
+        forecast_values = forecast_result.predicted_mean
+    elif model_name == "sarima":
+        model_fit = _fit_sarima(train)
+        forecast_result = model_fit.get_forecast(steps=len(test))
+        confidence_intervals = forecast_result.conf_int()
+        forecast_values = forecast_result.predicted_mean
+    elif model_name == "seasonal_naive":
+        model_fit = None
+        forecast_values = seasonal_naive_forecast(train, test.index)
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
+
+    forecast = forecast_series(forecast_values, test.index)
+    return calculate_metrics(test, forecast), forecast, model_fit, confidence_intervals
+
+
 def rolling_origin_splits(
     series,
     n_splits=EVALUATION_FOLDS,
@@ -163,13 +202,7 @@ def evaluate_rolling_origin(series):
 
     for train, test in folds:
         arima_fit = _fit_arima(train)
-        sarima_fit = SARIMAX(
-            train,
-            order=SARIMA_ORDER,
-            seasonal_order=SARIMA_SEASONAL_ORDER,
-            enforce_stationarity=False,
-            enforce_invertibility=False,
-        ).fit(disp=False)
+        sarima_fit = _fit_sarima(train)
 
         arima_result = arima_fit.get_forecast(steps=len(test))
         sarima_result = sarima_fit.get_forecast(steps=len(test))
@@ -249,7 +282,8 @@ def _show_diagnostics(train, train_diff, residuals, model_name, test, forecast, 
 
 def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
     monthly = load_monthly_series(csv_path, CITY, START_DATE, END_DATE)
-    folds = rolling_origin_splits(monthly)
+    selection_series, holdout = split_final_holdout(monthly)
+    folds = rolling_origin_splits(selection_series)
     initial_train = folds[0][0]
     result = adfuller(initial_train)
     adf_stat, adf_pvalue = result[0], result[1]
@@ -257,7 +291,7 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
     result_diff = adfuller(train_diff)
     adf_stat_diff, adf_pvalue_diff = result_diff[0], result_diff[1]
 
-    average_metrics, last_fold = evaluate_rolling_origin(monthly)
+    average_metrics, _ = evaluate_rolling_origin(selection_series)
     selected_model = select_best_model(average_metrics)
     arima_mse, arima_mae = average_metrics["arima"]
     sarima_mse, sarima_mae = average_metrics["sarima"]
@@ -285,22 +319,29 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
         f"Selected {selected_label} based on the lowest rolling-origin mean MSE "
         f"({selected_mse:.3f}; MAE: {selected_mae:.3f})."
     )
+    (holdout_mse, holdout_mae), holdout_forecast, holdout_fit, holdout_intervals = (
+        evaluate_holdout(selection_series, holdout, selected_model)
+    )
+    print(
+        f"{selected_label} untouched holdout ({holdout.index[0]:%Y-%m} to "
+        f"{holdout.index[-1]:%Y-%m}) MSE: {holdout_mse:.3f}; "
+        f"MAE: {holdout_mae:.3f}"
+    )
 
     if show_plots:
-        diagnostic_train = last_fold["train"]
-        diagnostic_interval = last_fold["confidence_intervals"].get(selected_model)
+        diagnostic_train = selection_series
         if selected_model == "seasonal_naive":
             residuals = diagnostic_train.diff(12).dropna()
         else:
-            residuals = last_fold["model_fits"][selected_model].resid
+            residuals = holdout_fit.resid
         lower = (
-            forecast_series(diagnostic_interval.iloc[:, 0], last_fold["test"].index)
-            if diagnostic_interval is not None
+            forecast_series(holdout_intervals.iloc[:, 0], holdout.index)
+            if holdout_intervals is not None
             else None
         )
         upper = (
-            forecast_series(diagnostic_interval.iloc[:, 1], last_fold["test"].index)
-            if diagnostic_interval is not None
+            forecast_series(holdout_intervals.iloc[:, 1], holdout.index)
+            if holdout_intervals is not None
             else None
         )
         _show_diagnostics(
@@ -308,8 +349,8 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
             diagnostic_train.diff().dropna(),
             residuals,
             selected_label,
-            last_fold["test"],
-            last_fold["forecasts"][selected_model],
+            holdout,
+            holdout_forecast,
             lower,
             upper,
         )
@@ -318,13 +359,7 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
         model_fit = _fit_arima(monthly)
         model_summary = model_fit.summary().as_text()
     elif selected_model == "sarima":
-        model_fit = SARIMAX(
-            monthly,
-            order=SARIMA_ORDER,
-            seasonal_order=SARIMA_SEASONAL_ORDER,
-            enforce_stationarity=False,
-            enforce_invertibility=False,
-        ).fit(disp=False)
+        model_fit = _fit_sarima(monthly)
         model_summary = model_fit.summary().as_text()
     else:
         model_fit = SeasonalNaiveModel(monthly.to_numpy())
@@ -377,6 +412,11 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
         evaluation_folds=EVALUATION_FOLDS,
         forecast_horizon_months=FORECAST_HORIZON_MONTHS,
         selected_model=selected_model,
+        holdout_mse=holdout_mse,
+        holdout_mae=holdout_mae,
+        holdout_start=holdout.index[0].strftime("%Y-%m"),
+        holdout_end=holdout.index[-1].strftime("%Y-%m"),
+        holdout_horizon_months=len(holdout),
     )
     print(f"{selected_label} model saved to {model_path}")
     print("Experiment results saved to SQLite.")
