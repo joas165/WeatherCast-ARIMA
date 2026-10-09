@@ -8,6 +8,7 @@ __pycache__/
 
 # Ignore virtual environment
 venv/
+.venv/
 .env/
 .envrc
 .python-version
@@ -15,6 +16,9 @@ venv/
 # Ignore dataset files
 *.csv
 *.xlsx
+
+# Ignore saved model artifacts
+models/
 
 # Ignore logs and temporary files
 *.log
@@ -30,4 +34,3 @@ Thumbs.db
 
 # Ignore compiled C extensions
 *.so
-

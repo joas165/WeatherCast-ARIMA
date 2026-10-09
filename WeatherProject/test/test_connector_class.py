@@ -2,6 +2,7 @@ import unittest
 import os
 import sqlite3
 import sys
+import tempfile
 
 # Ensure we can import from src
 TEST_DIR = os.path.dirname(__file__)  # Get the directory of this test file
@@ -18,6 +19,8 @@ class TestSQLiteConnector(unittest.TestCase):
     def setUpClass(cls):
         """Create a test database and initialize connector"""
         cls.test_db_name = os.path.join(TEST_DIR, "test_weather_forecast.db")
+        if os.path.exists(cls.test_db_name):
+            os.remove(cls.test_db_name)
         cls.connector = SQLiteConnector(db_name=cls.test_db_name)
         cls.connector.create_table()  # Ensure table exists
 
@@ -47,13 +50,21 @@ class TestSQLiteConnector(unittest.TestCase):
         self.connector.insert_model_results(
             adf_stat=1.0, adf_pvalue=0.01, adf_stat_diff=1.0, adf_pvalue_diff=0.01,
             order=(5, 1, 0), forecast_steps=10, model_summary='Test Summary', mse=0.1, mae=0.05, city='London',
-            train_start='2000-01-01', train_end='2007-12-01', test_start='2008-03-01', test_end='2010-03-01'
+            train_start='2000-01-01', train_end='2007-12-01', test_start='2008-03-01', test_end='2010-03-01',
+            seasonal_naive_mse=0.2, seasonal_naive_mae=0.1, sarima_mse=0.15, sarima_mae=0.08,
+            sarima_order=(1, 1, 1), sarima_seasonal_order=(1, 1, 1, 12),
+            model_path='models/test.pkl', code_version='code-hash', data_hash='data-hash',
+            evaluation_folds=5, forecast_horizon_months=12
         )
 
         conn = self.connector.connect()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM arima_model;")
-        rows = cursor.fetchall()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM arima_model;")
+            rows = cursor.fetchall()
+            column_names = [column[0] for column in cursor.description]
+        finally:
+            conn.close()
 
         self.assertEqual(len(rows), 1)  # Ensure data was inserted
         self.assertEqual(rows[0][1], 1.0)  # adf_stat
@@ -72,8 +83,45 @@ class TestSQLiteConnector(unittest.TestCase):
         self.assertEqual(rows[0][14], '2007-12-01')  # train_end
         self.assertEqual(rows[0][15], '2008-03-01')  # test_start
         self.assertEqual(rows[0][16], '2010-03-01')  # test_end
+        self.assertEqual(rows[0][17], 0.2)  # seasonal_naive_mse
+        self.assertEqual(rows[0][19], 0.15)  # sarima_mse
+        self.assertEqual(rows[0][27], 12)  # sarima seasonal period
+        self.assertEqual(rows[0][28], 'models/test.pkl')  # model_path
+        self.assertEqual(rows[0][29], 'code-hash')  # code_version
+        self.assertEqual(rows[0][30], 'data-hash')  # data_hash
+        self.assertEqual(rows[0][31], 5)  # evaluation_folds
+        self.assertEqual(rows[0][32], 12)  # forecast_horizon_months
+        self.assertIn('data_hash', column_names)
 
         conn.close()
+
+    def test_create_table_migrates_existing_database(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "legacy.db")
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE arima_model (id INTEGER PRIMARY KEY)")
+            conn.close()
+
+            SQLiteConnector(db_path).create_table()
+
+            conn = sqlite3.connect(db_path)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(arima_model)")}
+            conn.close()
+        self.assertIn("model_path", columns)
+        self.assertIn("sarima_mse", columns)
+        self.assertIn("evaluation_folds", columns)
+
+    def test_insert_errors_are_raised(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            connector = SQLiteConnector(os.path.join(temp_dir, "missing-table.db"))
+            with self.assertRaises(sqlite3.OperationalError):
+                connector.insert_model_results(
+                    adf_stat=1.0, adf_pvalue=0.01, adf_stat_diff=1.0, adf_pvalue_diff=0.01,
+                    order=(1, 1, 0), forecast_steps=1, model_summary='Summary', mse=0.1, mae=0.1,
+                    city='London', train_start='2000-01', train_end='2000-01',
+                    test_start='2000-02', test_end='2000-02'
+                )
+
 
 if __name__ == '__main__':
     unittest.main()

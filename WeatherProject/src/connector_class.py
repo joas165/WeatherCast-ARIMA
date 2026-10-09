@@ -1,30 +1,30 @@
 import sqlite3
 import os
 
-class SQLiteConnector:
-    def __init__(self, db_name='data/weatherDatabase.db'):
-        if not os.path.isabs(db_name):
-            BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            db_name = os.path.join(BASE_DIR, db_name)
 
-        # Ensure the directory exists before using the database file
+class SQLiteConnector:
+    def __init__(self, db_name="data/weatherDatabase.db"):
+        if not os.path.isabs(db_name):
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            db_name = os.path.join(base_dir, db_name)
+
         db_dir = os.path.dirname(db_name)
         if not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)  # Create directory if missing
+            os.makedirs(db_dir, exist_ok=True)
 
         self.db_name = db_name
-        print(f"Using database: {self.db_name}")  # Debugging
+        print(f"Using database: {self.db_name}")
 
     def connect(self):
         """Establish a connection to the SQLite database."""
         return sqlite3.connect(self.db_name)
 
     def create_table(self):
-        """Create the arima_model table if it does not exist."""
+        """Create or upgrade the arima_model table."""
         conn = self.connect()
-        cursor = conn.cursor()
         try:
-            cursor.execute('''
+            with conn:
+                conn.execute("""
             CREATE TABLE IF NOT EXISTS arima_model (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 adf_stat REAL,
@@ -42,34 +42,133 @@ class SQLiteConnector:
                 train_start TEXT,
                 train_end TEXT,
                 test_start TEXT,
-                test_end TEXT
+                test_end TEXT,
+                seasonal_naive_mse REAL,
+                seasonal_naive_mae REAL,
+                sarima_mse REAL,
+                sarima_mae REAL,
+                sarima_order_p INTEGER,
+                sarima_order_d INTEGER,
+                sarima_order_q INTEGER,
+                sarima_seasonal_p INTEGER,
+                sarima_seasonal_d INTEGER,
+                sarima_seasonal_q INTEGER,
+                sarima_seasonal_period INTEGER,
+                model_path TEXT,
+                code_version TEXT,
+                data_hash TEXT,
+                evaluation_folds INTEGER,
+                forecast_horizon_months INTEGER
             )
-            ''')
-            conn.commit()
-        except sqlite3.Error as e:
-            print(f"An error occurred while creating the table: {e}")
+            """)
+                existing_columns = {
+                    row[1] for row in conn.execute("PRAGMA table_info(arima_model)")
+                }
+                additions = {
+                    "seasonal_naive_mse": "REAL",
+                    "seasonal_naive_mae": "REAL",
+                    "sarima_mse": "REAL",
+                    "sarima_mae": "REAL",
+                    "sarima_order_p": "INTEGER",
+                    "sarima_order_d": "INTEGER",
+                    "sarima_order_q": "INTEGER",
+                    "sarima_seasonal_p": "INTEGER",
+                    "sarima_seasonal_d": "INTEGER",
+                    "sarima_seasonal_q": "INTEGER",
+                    "sarima_seasonal_period": "INTEGER",
+                    "model_path": "TEXT",
+                    "code_version": "TEXT",
+                    "data_hash": "TEXT",
+                    "evaluation_folds": "INTEGER",
+                    "forecast_horizon_months": "INTEGER",
+                }
+                for column, column_type in additions.items():
+                    if column not in existing_columns:
+                        conn.execute(
+                            f"ALTER TABLE arima_model ADD COLUMN {column} {column_type}"
+                        )
         finally:
             conn.close()
 
-    def insert_model_results(self, adf_stat, adf_pvalue, adf_stat_diff, adf_pvalue_diff, order, forecast_steps, model_summary, mse, mae, city, train_start, train_end, test_start, test_end):
+    def insert_model_results(
+        self,
+        adf_stat,
+        adf_pvalue,
+        adf_stat_diff,
+        adf_pvalue_diff,
+        order,
+        forecast_steps,
+        model_summary,
+        mse,
+        mae,
+        city,
+        train_start,
+        train_end,
+        test_start,
+        test_end,
+        seasonal_naive_mse=None,
+        seasonal_naive_mae=None,
+        sarima_mse=None,
+        sarima_mae=None,
+        sarima_order=(None, None, None),
+        sarima_seasonal_order=(None, None, None, None),
+        model_path=None,
+        code_version=None,
+        data_hash=None,
+        evaluation_folds=None,
+        forecast_horizon_months=None,
+    ):
         """Insert model results into the arima_model table."""
         conn = self.connect()
-        cursor = conn.cursor()
         try:
-            cursor.execute('''
+            with conn:
+                conn.execute("""
             INSERT INTO arima_model (
-                adf_stat, adf_pvalue, adf_stat_diff, adf_pvalue_diff, 
+                adf_stat, adf_pvalue, adf_stat_diff, adf_pvalue_diff,
                 order_p, order_d, order_q, forecast_steps, model_summary, mse, mae, city,
-                train_start, train_end, test_start, test_end
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                adf_stat, adf_pvalue, adf_stat_diff, adf_pvalue_diff, 
-                order[0], order[1], order[2], forecast_steps, model_summary, mse, mae, city,
-                train_start, train_end, test_start, test_end
-            ))
-            conn.commit()
-        except sqlite3.Error as e:
-            print(f"An error occurred while inserting the data: {e}")
+                train_start, train_end, test_start, test_end,
+                seasonal_naive_mse, seasonal_naive_mae, sarima_mse, sarima_mae,
+                sarima_order_p, sarima_order_d, sarima_order_q,
+                sarima_seasonal_p, sarima_seasonal_d, sarima_seasonal_q,
+                sarima_seasonal_period, model_path, code_version, data_hash,
+                evaluation_folds, forecast_horizon_months
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """, (
+                    adf_stat,
+                    adf_pvalue,
+                    adf_stat_diff,
+                    adf_pvalue_diff,
+                    order[0],
+                    order[1],
+                    order[2],
+                    forecast_steps,
+                    model_summary,
+                    mse,
+                    mae,
+                    city,
+                    train_start,
+                    train_end,
+                    test_start,
+                    test_end,
+                    seasonal_naive_mse,
+                    seasonal_naive_mae,
+                    sarima_mse,
+                    sarima_mae,
+                    sarima_order[0],
+                    sarima_order[1],
+                    sarima_order[2],
+                    sarima_seasonal_order[0],
+                    sarima_seasonal_order[1],
+                    sarima_seasonal_order[2],
+                    sarima_seasonal_order[3],
+                    model_path,
+                    code_version,
+                    data_hash,
+                    evaluation_folds,
+                    forecast_horizon_months,
+                ))
         finally:
             conn.close()
-
