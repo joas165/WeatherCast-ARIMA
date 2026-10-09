@@ -54,7 +54,7 @@ class TestSQLiteConnector(unittest.TestCase):
             seasonal_naive_mse=0.2, seasonal_naive_mae=0.1, sarima_mse=0.15, sarima_mae=0.08,
             sarima_order=(1, 1, 1), sarima_seasonal_order=(1, 1, 1, 12),
             model_path='models/test.pkl', code_version='code-hash', data_hash='data-hash',
-            evaluation_folds=5, forecast_horizon_months=12
+            evaluation_folds=5, forecast_horizon_months=12, selected_model='sarima'
         )
 
         conn = self.connector.connect()
@@ -91,6 +91,7 @@ class TestSQLiteConnector(unittest.TestCase):
         self.assertEqual(rows[0][30], 'data-hash')  # data_hash
         self.assertEqual(rows[0][31], 5)  # evaluation_folds
         self.assertEqual(rows[0][32], 12)  # forecast_horizon_months
+        self.assertEqual(rows[0][33], 'sarima')  # selected_model
         self.assertIn('data_hash', column_names)
 
         conn.close()
@@ -110,6 +111,7 @@ class TestSQLiteConnector(unittest.TestCase):
         self.assertIn("model_path", columns)
         self.assertIn("sarima_mse", columns)
         self.assertIn("evaluation_folds", columns)
+        self.assertIn("selected_model", columns)
 
     def test_insert_errors_are_raised(self):
         with tempfile.TemporaryDirectory() as temp_dir:

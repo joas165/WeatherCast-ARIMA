@@ -1,5 +1,6 @@
 import hashlib
 import os
+import pickle
 from datetime import datetime, timezone
 
 import matplotlib.pyplot as plt
@@ -70,11 +71,40 @@ def calculate_metrics(actual, predicted):
     )
 
 
+class SeasonalNaiveModel:
+    def __init__(self, values, seasonal_period=12):
+        if seasonal_period < 1 or len(values) < seasonal_period:
+            raise ValueError("The training series must contain at least one full seasonal period.")
+        self.last_values = np.asarray(values[-seasonal_period:], dtype=float)
+        self.seasonal_period = seasonal_period
+
+    def forecast(self, steps):
+        if steps < 0:
+            raise ValueError("Forecast steps cannot be negative.")
+        repeats = (steps + self.seasonal_period - 1) // self.seasonal_period
+        return np.tile(self.last_values, repeats)[:steps]
+
+    def to_dict(self):
+        return {
+            "model": "seasonal_naive",
+            "seasonal_period": self.seasonal_period,
+            "last_values": self.last_values.tolist(),
+        }
+
+
 def seasonal_naive_forecast(train, index):
     if len(train) < 12:
         raise ValueError("At least 12 training months are required for the seasonal-naive forecast.")
-    values = np.tile(train.iloc[-12:].to_numpy(), (len(index) + 11) // 12)[: len(index)]
+    values = SeasonalNaiveModel(train.to_numpy()).forecast(len(index))
     return forecast_series(values, index)
+
+
+def select_best_model(average_metrics):
+    """Select the candidate with the lowest mean MSE, using MAE to break ties."""
+    return min(
+        average_metrics,
+        key=lambda name: (average_metrics[name][0], average_metrics[name][1]),
+    )
 
 
 def rolling_origin_splits(
@@ -121,22 +151,28 @@ def evaluate_rolling_origin(series):
             enforce_invertibility=False,
         ).fit(disp=False)
 
-        arima_forecast = forecast_series(arima_fit.forecast(steps=len(test)), test.index)
-        sarima_forecast = forecast_series(sarima_fit.forecast(steps=len(test)), test.index)
+        arima_result = arima_fit.get_forecast(steps=len(test))
+        sarima_result = sarima_fit.get_forecast(steps=len(test))
+        arima_forecast = forecast_series(arima_result.predicted_mean, test.index)
+        sarima_forecast = forecast_series(sarima_result.predicted_mean, test.index)
         baseline_forecast = seasonal_naive_forecast(train, test.index)
         fold_metrics["arima"].append(calculate_metrics(test, arima_forecast))
         fold_metrics["sarima"].append(calculate_metrics(test, sarima_forecast))
         fold_metrics["seasonal_naive"].append(calculate_metrics(test, baseline_forecast))
 
-        forecast_result = arima_fit.get_forecast(steps=len(test))
-        confidence_interval = forecast_result.conf_int()
         last_fold = {
             "train": train,
             "test": test,
-            "model_fit": arima_fit,
-            "forecast": arima_forecast,
-            "lower": forecast_series(confidence_interval.iloc[:, 0], test.index),
-            "upper": forecast_series(confidence_interval.iloc[:, 1], test.index),
+            "model_fits": {"arima": arima_fit, "sarima": sarima_fit},
+            "forecasts": {
+                "arima": arima_forecast,
+                "sarima": sarima_forecast,
+                "seasonal_naive": baseline_forecast,
+            },
+            "confidence_intervals": {
+                "arima": arima_result.conf_int(),
+                "sarima": sarima_result.conf_int(),
+            },
         }
 
     averages = {
@@ -146,7 +182,7 @@ def evaluate_rolling_origin(series):
     return averages, last_fold
 
 
-def _show_diagnostics(train, train_diff, model_fit, test, forecast, lower, upper):
+def _show_diagnostics(train, train_diff, residuals, model_name, test, forecast, lower, upper):
     plt.figure(figsize=(10, 6))
     plt.plot(train, label="Train Set")
     plt.title("Monthly Average Temperature - Train Set")
@@ -166,23 +202,24 @@ def _show_diagnostics(train, train_diff, model_fit, test, forecast, lower, upper
         plt.show()
 
     plt.figure(figsize=(10, 6))
-    plt.plot(model_fit.resid, label="Residuals")
-    plt.title("Residuals of ARIMA Model")
+    plt.plot(residuals, label="Residuals")
+    plt.title(f"Residuals of {model_name} Model")
     plt.xlabel("Date")
     plt.ylabel("Residuals")
     plt.legend()
     plt.show()
 
     plt.figure(figsize=(10, 6))
-    sns.histplot(model_fit.resid, kde=True)
+    sns.histplot(residuals, kde=True)
     plt.title("Residual Density Plot")
     plt.xlabel("Residuals")
     plt.show()
 
     plt.figure(figsize=(10, 6))
     plt.plot(test.index, test, label="Observed")
-    plt.plot(test.index, forecast, label="ARIMA Forecast", color="red")
-    plt.fill_between(test.index, lower, upper, color="gray", alpha=0.2, label="95% interval")
+    plt.plot(test.index, forecast, label=f"{model_name} Forecast", color="red")
+    if lower is not None and upper is not None:
+        plt.fill_between(test.index, lower, upper, color="gray", alpha=0.2, label="95% interval")
     plt.title("Observed vs Forecasted Values (Test Set)")
     plt.xlabel("Date")
     plt.ylabel("Temperature")
@@ -201,6 +238,7 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
     adf_stat_diff, adf_pvalue_diff = result_diff[0], result_diff[1]
 
     average_metrics, last_fold = evaluate_rolling_origin(monthly)
+    selected_model = select_best_model(average_metrics)
     arima_mse, arima_mae = average_metrics["arima"]
     sarima_mse, sarima_mae = average_metrics["sarima"]
     baseline_mse, baseline_mae = average_metrics["seasonal_naive"]
@@ -216,23 +254,75 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
         f"Seasonal-naive rolling-origin mean MSE: {baseline_mse:.3f}; "
         f"MAE: {baseline_mae:.3f}"
     )
+    selected_mse, selected_mae = average_metrics[selected_model]
+    model_labels = {
+        "arima": "ARIMA",
+        "sarima": "SARIMA",
+        "seasonal_naive": "Seasonal-naive",
+    }
+    selected_label = model_labels[selected_model]
+    print(
+        f"Selected {selected_label} based on the lowest rolling-origin mean MSE "
+        f"({selected_mse:.3f}; MAE: {selected_mae:.3f})."
+    )
 
     if show_plots:
+        diagnostic_train = last_fold["train"]
+        diagnostic_interval = last_fold["confidence_intervals"].get(selected_model)
+        if selected_model == "seasonal_naive":
+            residuals = diagnostic_train.diff(12).dropna()
+        else:
+            residuals = last_fold["model_fits"][selected_model].resid
+        lower = (
+            forecast_series(diagnostic_interval.iloc[:, 0], last_fold["test"].index)
+            if diagnostic_interval is not None
+            else None
+        )
+        upper = (
+            forecast_series(diagnostic_interval.iloc[:, 1], last_fold["test"].index)
+            if diagnostic_interval is not None
+            else None
+        )
         _show_diagnostics(
-            initial_train,
-            train_diff,
-            last_fold["model_fit"],
+            diagnostic_train,
+            diagnostic_train.diff().dropna(),
+            residuals,
+            selected_label,
             last_fold["test"],
-            last_fold["forecast"],
-            last_fold["lower"],
-            last_fold["upper"],
+            last_fold["forecasts"][selected_model],
+            lower,
+            upper,
         )
 
-    model_fit = ARIMA(monthly, order=ARIMA_ORDER).fit()
+    if selected_model == "arima":
+        model_fit = ARIMA(monthly, order=ARIMA_ORDER).fit()
+        model_summary = model_fit.summary().as_text()
+    elif selected_model == "sarima":
+        model_fit = SARIMAX(
+            monthly,
+            order=SARIMA_ORDER,
+            seasonal_order=SARIMA_SEASONAL_ORDER,
+            enforce_stationarity=False,
+            enforce_invertibility=False,
+        ).fit(disp=False)
+        model_summary = model_fit.summary().as_text()
+    else:
+        model_fit = SeasonalNaiveModel(monthly.to_numpy())
+        model_summary = (
+            f"Seasonal-naive model with period {model_fit.seasonal_period}; "
+            f"last seasonal values: {model_fit.last_values.tolist()}"
+        )
     os.makedirs(MODEL_DIR, exist_ok=True)
-    model_name = f"arima_{CITY.lower()}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}.pkl"
+    model_name = (
+        f"{selected_model}_{CITY.lower()}_"
+        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}.pkl"
+    )
     model_path = os.path.join(MODEL_DIR, model_name)
-    model_fit.save(model_path)
+    if selected_model == "seasonal_naive":
+        with open(model_path, "wb") as model_file:
+            pickle.dump(model_fit.to_dict(), model_file)
+    else:
+        model_fit.save(model_path)
     with open(__file__, "rb") as source_file:
         code_hash = hashlib.sha256(source_file.read()).hexdigest()
     with open(csv_path, "rb") as data_file:
@@ -247,9 +337,9 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
         adf_pvalue_diff=adf_pvalue_diff,
         order=ARIMA_ORDER,
         forecast_steps=FORECAST_HORIZON_MONTHS,
-        model_summary=model_fit.summary().as_text(),
-        mse=arima_mse,
-        mae=arima_mae,
+        model_summary=model_summary,
+        mse=selected_mse,
+        mae=selected_mae,
         city=CITY,
         train_start=initial_train.index[0].strftime("%Y-%m"),
         train_end=initial_train.index[-1].strftime("%Y-%m"),
@@ -266,8 +356,9 @@ def run_analysis(csv_path=CSV_PATH, db_path=None, show_plots=True):
         data_hash=data_hash,
         evaluation_folds=EVALUATION_FOLDS,
         forecast_horizon_months=FORECAST_HORIZON_MONTHS,
+        selected_model=selected_model,
     )
-    print(f"ARIMA model saved to {model_path}")
+    print(f"{selected_label} model saved to {model_path}")
     print("Experiment results saved to SQLite.")
 
 

@@ -32,13 +32,15 @@ splits. Each split forecasts 12 months, and the training window expands by
 12 months between splits; at least 120 monthly observations are required.
 Mean MSE and MAE across the five splits are reported for ARIMA, a seasonal-naive
 forecast (the previous year's monthly values), and a SARIMA model with a
-12-month seasonal period. The saved ARIMA model is refit on the full available
-series after evaluation.
+12-month seasonal period. The candidate with the lowest mean MSE is selected
+(mean MAE breaks ties) and refit on the full available series before saving.
+ARIMA and SARIMA results are saved in statsmodels format; a seasonal-naive
+result is saved as a pickle containing its seasonal period and latest values.
 
 The SQLite database is created at `data/weatherDatabase.db`. Fitted ARIMA
-models are saved under `models/`. Each database result records the model
-metrics and settings, the saved model path, and SHA-256 hashes of the script
-and source dataset so an experiment's inputs can be identified. The recorded
+models are saved under `models/`. Each database result records the selected
+model type, its metrics and settings, the saved model path, and SHA-256 hashes
+of the script and source dataset so an experiment's inputs can be identified. The recorded
 training dates refer to the first split; test dates span all evaluation splits.
 
 ## License

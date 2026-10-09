@@ -58,7 +58,8 @@ class SQLiteConnector:
                 code_version TEXT,
                 data_hash TEXT,
                 evaluation_folds INTEGER,
-                forecast_horizon_months INTEGER
+                forecast_horizon_months INTEGER,
+                selected_model TEXT
             )
             """)
                 existing_columns = {
@@ -81,6 +82,7 @@ class SQLiteConnector:
                     "data_hash": "TEXT",
                     "evaluation_folds": "INTEGER",
                     "forecast_horizon_months": "INTEGER",
+                    "selected_model": "TEXT",
                 }
                 for column, column_type in additions.items():
                     if column not in existing_columns:
@@ -117,6 +119,7 @@ class SQLiteConnector:
         data_hash=None,
         evaluation_folds=None,
         forecast_horizon_months=None,
+        selected_model=None,
     ):
         """Insert model results into the arima_model table."""
         conn = self.connect()
@@ -131,10 +134,10 @@ class SQLiteConnector:
                 sarima_order_p, sarima_order_d, sarima_order_q,
                 sarima_seasonal_p, sarima_seasonal_d, sarima_seasonal_q,
                 sarima_seasonal_period, model_path, code_version, data_hash,
-                evaluation_folds, forecast_horizon_months
+                evaluation_folds, forecast_horizon_months, selected_model
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """, (
                     adf_stat,
@@ -169,6 +172,7 @@ class SQLiteConnector:
                     data_hash,
                     evaluation_folds,
                     forecast_horizon_months,
+                    selected_model,
                 ))
         finally:
             conn.close()

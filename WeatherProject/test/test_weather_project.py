@@ -1,4 +1,5 @@
 import os
+import pickle
 import sys
 import tempfile
 import unittest
@@ -16,6 +17,8 @@ from weather_project import (
     load_monthly_series,
     rolling_origin_splits,
     seasonal_naive_forecast,
+    SeasonalNaiveModel,
+    select_best_model,
 )
 
 
@@ -32,6 +35,28 @@ class TestWeatherForecastHelpers(unittest.TestCase):
         np.testing.assert_array_equal(forecast.iloc[:12].to_numpy(), self.series.iloc[-12:].to_numpy())
         np.testing.assert_array_equal(forecast.iloc[12:].to_numpy(), self.series.iloc[-12:-9].to_numpy())
         self.assertTrue(forecast.index.equals(test_index))
+
+    def test_seasonal_naive_model_can_be_saved_as_forecaster(self):
+        model = SeasonalNaiveModel(self.series.to_numpy())
+
+        saved_model = pickle.loads(pickle.dumps(model.to_dict()))
+        restored_model = SeasonalNaiveModel(
+            saved_model["last_values"],
+            saved_model["seasonal_period"],
+        )
+        np.testing.assert_array_equal(
+            restored_model.forecast(15),
+            np.tile(self.series.iloc[-12:].to_numpy(), 2)[:15],
+        )
+
+    def test_select_best_model_uses_mean_mse_and_mae_to_break_ties(self):
+        metrics = {
+            "arima": (2.0, 1.5),
+            "sarima": (1.0, 0.8),
+            "seasonal_naive": (1.0, 0.7),
+        }
+
+        self.assertEqual(select_best_model(metrics), "seasonal_naive")
 
     def test_metrics_reject_misaligned_indexes(self):
         with self.assertRaisesRegex(ValueError, "indexes must match"):
