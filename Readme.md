@@ -42,6 +42,8 @@ models are saved under `models/`. Each database result records the selected
 model type, its metrics and settings, the saved model path, and SHA-256 hashes
 of the script and source dataset so an experiment's inputs can be identified. The recorded
 training dates refer to the first split; test dates span all evaluation splits.
+The `arima_order_p/d/q` columns always describe the ARIMA candidate; legacy
+`order_p/d/q` columns are retained for compatibility and contain the same values.
 
 ## License
 

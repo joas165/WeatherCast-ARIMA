@@ -74,24 +74,26 @@ class TestSQLiteConnector(unittest.TestCase):
         self.assertEqual(rows[0][5], 5)  # order_p
         self.assertEqual(rows[0][6], 1)  # order_d
         self.assertEqual(rows[0][7], 0)  # order_q
-        self.assertEqual(rows[0][8], 10)  # forecast_steps
-        self.assertEqual(rows[0][9], 'Test Summary')  # model_summary
-        self.assertEqual(rows[0][10], 0.1)  # mse
-        self.assertEqual(rows[0][11], 0.05)  # mae
-        self.assertEqual(rows[0][12], 'London')  # city
-        self.assertEqual(rows[0][13], '2000-01-01')  # train_start
-        self.assertEqual(rows[0][14], '2007-12-01')  # train_end
-        self.assertEqual(rows[0][15], '2008-03-01')  # test_start
-        self.assertEqual(rows[0][16], '2010-03-01')  # test_end
-        self.assertEqual(rows[0][17], 0.2)  # seasonal_naive_mse
-        self.assertEqual(rows[0][19], 0.15)  # sarima_mse
-        self.assertEqual(rows[0][27], 12)  # sarima seasonal period
-        self.assertEqual(rows[0][28], 'models/test.pkl')  # model_path
-        self.assertEqual(rows[0][29], 'code-hash')  # code_version
-        self.assertEqual(rows[0][30], 'data-hash')  # data_hash
-        self.assertEqual(rows[0][31], 5)  # evaluation_folds
-        self.assertEqual(rows[0][32], 12)  # forecast_horizon_months
-        self.assertEqual(rows[0][33], 'sarima')  # selected_model
+        self.assertEqual(rows[0][8:11], (5, 1, 0))  # arima_order_p/d/q
+        self.assertEqual(rows[0][11], 10)  # forecast_steps
+        self.assertEqual(rows[0][12], 'Test Summary')  # model_summary
+        self.assertEqual(rows[0][13], 0.1)  # mse
+        self.assertEqual(rows[0][14], 0.05)  # mae
+        self.assertEqual(rows[0][15], 'London')  # city
+        self.assertEqual(rows[0][16], '2000-01-01')  # train_start
+        self.assertEqual(rows[0][17], '2007-12-01')  # train_end
+        self.assertEqual(rows[0][18], '2008-03-01')  # test_start
+        self.assertEqual(rows[0][19], '2010-03-01')  # test_end
+        self.assertEqual(rows[0][20], 0.2)  # seasonal_naive_mse
+        self.assertEqual(rows[0][22], 0.15)  # sarima_mse
+        self.assertEqual(rows[0][30], 12)  # sarima seasonal period
+        self.assertEqual(rows[0][31], 'models/test.pkl')  # model_path
+        self.assertEqual(rows[0][32], 'code-hash')  # code_version
+        self.assertEqual(rows[0][33], 'data-hash')  # data_hash
+        self.assertEqual(rows[0][34], 5)  # evaluation_folds
+        self.assertEqual(rows[0][35], 12)  # forecast_horizon_months
+        self.assertEqual(rows[0][36], 'sarima')  # selected_model
+        self.assertIn('arima_order_p', column_names)
         self.assertIn('data_hash', column_names)
 
         conn.close()
@@ -100,18 +102,29 @@ class TestSQLiteConnector(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "legacy.db")
             conn = sqlite3.connect(db_path)
-            conn.execute("CREATE TABLE arima_model (id INTEGER PRIMARY KEY)")
+            conn.execute(
+                "CREATE TABLE arima_model (id INTEGER PRIMARY KEY, "
+                "order_p INTEGER, order_d INTEGER, order_q INTEGER)"
+            )
+            conn.execute(
+                "INSERT INTO arima_model (order_p, order_d, order_q) VALUES (5, 1, 3)"
+            )
+            conn.commit()
             conn.close()
 
             SQLiteConnector(db_path).create_table()
 
             conn = sqlite3.connect(db_path)
             columns = {row[1] for row in conn.execute("PRAGMA table_info(arima_model)")}
+            migrated_order = conn.execute(
+                "SELECT arima_order_p, arima_order_d, arima_order_q FROM arima_model"
+            ).fetchone()
             conn.close()
         self.assertIn("model_path", columns)
         self.assertIn("sarima_mse", columns)
         self.assertIn("evaluation_folds", columns)
         self.assertIn("selected_model", columns)
+        self.assertEqual(migrated_order, (5, 1, 3))
 
     def test_insert_errors_are_raised(self):
         with tempfile.TemporaryDirectory() as temp_dir:

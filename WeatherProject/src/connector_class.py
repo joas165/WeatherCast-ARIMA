@@ -34,6 +34,9 @@ class SQLiteConnector:
                 order_p INTEGER,
                 order_d INTEGER,
                 order_q INTEGER,
+                arima_order_p INTEGER,
+                arima_order_d INTEGER,
+                arima_order_q INTEGER,
                 forecast_steps INTEGER,
                 model_summary TEXT,
                 mse REAL,
@@ -66,6 +69,9 @@ class SQLiteConnector:
                     row[1] for row in conn.execute("PRAGMA table_info(arima_model)")
                 }
                 additions = {
+                    "arima_order_p": "INTEGER",
+                    "arima_order_d": "INTEGER",
+                    "arima_order_q": "INTEGER",
                     "seasonal_naive_mse": "REAL",
                     "seasonal_naive_mae": "REAL",
                     "sarima_mse": "REAL",
@@ -89,6 +95,16 @@ class SQLiteConnector:
                         conn.execute(
                             f"ALTER TABLE arima_model ADD COLUMN {column} {column_type}"
                         )
+                if {"order_p", "order_d", "order_q"}.issubset(existing_columns):
+                    conn.execute("""
+                        UPDATE arima_model
+                        SET arima_order_p = order_p,
+                            arima_order_d = order_d,
+                            arima_order_q = order_q
+                        WHERE arima_order_p IS NULL
+                          AND arima_order_d IS NULL
+                          AND arima_order_q IS NULL
+                    """)
         finally:
             conn.close()
 
@@ -128,7 +144,8 @@ class SQLiteConnector:
                 conn.execute("""
             INSERT INTO arima_model (
                 adf_stat, adf_pvalue, adf_stat_diff, adf_pvalue_diff,
-                order_p, order_d, order_q, forecast_steps, model_summary, mse, mae, city,
+                order_p, order_d, order_q, arima_order_p, arima_order_d, arima_order_q,
+                forecast_steps, model_summary, mse, mae, city,
                 train_start, train_end, test_start, test_end,
                 seasonal_naive_mse, seasonal_naive_mae, sarima_mse, sarima_mae,
                 sarima_order_p, sarima_order_d, sarima_order_q,
@@ -136,14 +153,17 @@ class SQLiteConnector:
                 sarima_seasonal_period, model_path, code_version, data_hash,
                 evaluation_folds, forecast_horizon_months, selected_model
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """, (
                     adf_stat,
                     adf_pvalue,
                     adf_stat_diff,
                     adf_pvalue_diff,
+                    order[0],
+                    order[1],
+                    order[2],
                     order[0],
                     order[1],
                     order[2],
